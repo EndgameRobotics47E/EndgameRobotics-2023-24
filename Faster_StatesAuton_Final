@@ -1,0 +1,443 @@
+#pragma region VEXcode Generated Robot Configuration
+// Make sure all required headers are included.
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <math.h>
+#include <string.h>
+
+
+#include "vex.h"
+
+using namespace vex;
+
+// Brain should be defined by default
+brain Brain;
+
+
+// START IQ MACROS
+#define waitUntil(condition)                                                   \
+  do {                                                                         \
+    wait(5, msec);                                                             \
+  } while (!(condition))
+
+#define repeat(iterations)                                                     \
+  for (int iterator = 0; iterator < iterations; iterator++)
+// END IQ MACROS
+
+
+// Robot configuration code.
+inertial BrainInertial = inertial();
+motor LeftMotor = motor(PORT1, false);
+motor RightMotor = motor(PORT7, true);
+gyro Gyro4 = gyro(PORT4);
+touchled TouchLED11 = touchled(PORT11);
+motor IntakeMotorA = motor(PORT9, true);
+motor IntakeMotorB = motor(PORT3, false);
+motor_group Intake = motor_group(IntakeMotorA, IntakeMotorB);
+
+motor LiftMotorA = motor(PORT2, false);
+motor LiftMotorB = motor(PORT8, true);
+motor_group Lift = motor_group(LiftMotorA, LiftMotorB);
+
+bumper Bumper10 = bumper(PORT10);
+colorsensor Color12 = colorsensor(PORT12);
+colorsensor Color6 = colorsensor(PORT6);
+
+#pragma endregion VEXcode Generated Robot Configuration
+
+//Author: Ishaan Agarwal  Date: 3/6/2024
+/*Changes Made From Previous Version (SCAuton_AA):
+    -Increased distance while collecting second line
+    -Decreased velocity in antijam
+    -Added a second lineup prior to green dump
+    -decreased time by 4 seconds now at 56 seconds
+*/
+
+// Include the IQ Library
+#include "vex.h"
+  
+// Allows for easier use of the VEX Library
+using namespace vex;
+
+// User defined function
+void initialSetup();
+// User defined function
+
+void drive(double distance, double heading, double velocity, double kP, double timeout);
+// User defined function
+void turn(double heading, bool errorCorrection);
+
+int Brain_precision = 0, Console_precision = 0;
+
+float myVariable, startTime, error, output, programRunTime, NO_TIMEOUT;
+
+bool direction, isIntakeOn = false;
+
+event LEDblink = event();
+event message1 = event();
+
+// initialSetup
+void initialSetup() {
+  LEDblink.broadcast();
+  Gyro4.calibrate(calSlow);
+  Gyro4.setHeading(0.0, degrees);
+  Gyro4.setRotation(0.0, degrees);
+  Intake.setStopping(coast);
+  Intake.setVelocity(95.0, percent);
+  Lift.setVelocity(100.0, percent);
+  Lift.setMaxTorque(30.0, percent);
+  Intake.setMaxTorque(100.0, percent);
+  Lift.spin(reverse);
+  waitUntil(Bumper10.pressing());
+  wait(0.25, seconds);
+  Lift.stop();
+  Lift.spinFor(forward, 100.0, degrees, true);
+  Lift.setPosition(0.0, degrees);
+  LeftMotor.setStopping(brake);
+  RightMotor.setStopping(brake);
+  Lift.setStopping(hold);
+  myVariable = 0.0;
+  NO_TIMEOUT = 100000.0;
+}
+
+// drive function
+void drive(double distance, double heading, double velocity, double kP, double timeout=60) {
+  LeftMotor.setPosition(0.0, degrees);
+  RightMotor.setPosition(0.0, degrees);
+  LeftMotor.setTimeout(1.0, seconds);
+  RightMotor.setTimeout(1.0, seconds);
+  startTime = Brain.Timer.value();
+  if (velocity > 0.0) {
+    while ((LeftMotor.position(degrees) < distance && startTime + timeout > Brain.Timer.value())) {
+      error = heading - Gyro4.rotation();
+      output = error * kP;
+      LeftMotor.setVelocity((velocity - output), percent);
+      RightMotor.setVelocity((velocity + output), percent);
+      LeftMotor.spin(forward);
+      RightMotor.spin(forward);
+    wait(20, msec);
+    }
+  }
+  else {
+    while ((distance < LeftMotor.position(degrees) && startTime + timeout > Brain.Timer.value())) {
+      error = heading - Gyro4.rotation();
+      output = error * kP;
+      LeftMotor.setVelocity((velocity - output), percent);
+      RightMotor.setVelocity((velocity + output), percent);
+      LeftMotor.spin(forward);
+      RightMotor.spin(forward);
+    wait(20, msec);
+    }
+  }
+  LeftMotor.stop();
+  RightMotor.stop();
+}
+
+// turn function
+void turn(double heading, bool errorCorrection=true) {
+  float turnKp = 100;
+
+  if (heading > Gyro4.rotation()) {
+    while ((heading - 5 > Gyro4.rotation())) {
+    
+    //limits for the turn function
+    float turnError = heading - Gyro4.rotation();
+    float turnVelocity = turnError * turnKp / 180.0;
+    if (turnVelocity < 10) turnVelocity = 10;
+    if (turnError < 90 && turnError > 30) turnVelocity = 40;
+    
+    LeftMotor.setVelocity(turnVelocity, percent);
+    RightMotor.setVelocity(turnVelocity, percent);
+    LeftMotor.spin(reverse);
+    RightMotor.spin(forward);
+    wait(20, msec);
+
+    }
+  }
+  else {
+    while ((Gyro4.rotation() > heading + 5)) {
+
+      float turnError = Gyro4.rotation() - heading;
+      float turnVelocity = turnError * turnKp / 180.0;      
+      if (turnVelocity < 10) turnVelocity = 10;
+
+      LeftMotor.setVelocity(turnVelocity, percent);
+      RightMotor.setVelocity(turnVelocity, percent);
+      LeftMotor.spin(forward);
+      RightMotor.spin(reverse);
+      wait(20, msec);
+    }
+  }
+
+  LeftMotor.stop();
+  RightMotor.stop();
+
+  if (errorCorrection){
+    wait(100, msec);
+    turn(heading, false);
+  }
+}
+
+// "when started" hat block
+int whenStarted1() {
+  initialSetup();
+  while (true) {
+    if (isIntakeOn == true) {
+      if (Intake.velocity(percent) < 5) {
+        wait(0.5, seconds);
+
+        if(Intake.velocity(percent) < 5) {
+          Brain.Screen.print("jammed");
+          Brain.Screen.newLine();
+          Intake.setVelocity(50, percent);
+          Intake.spin(reverse);
+          wait(0.75, sec);
+          Intake.setVelocity(95, percent);
+          Intake.spin(forward);
+          wait(0.2, seconds);
+          Brain.Screen.print("unjammed");
+        }
+      } 
+    }
+    wait(20, msec);
+  }
+  return 0;
+}
+
+// "when I receive LEDblink" hat block
+void onevent_LEDblink_0() {
+  if (Brain.Battery.capacity(percent) > 95.0) {
+    TouchLED11.setColor(blue_green);
+    repeat(12) {
+      TouchLED11.setColor(colorType::none);
+      wait(0.25, seconds);
+      TouchLED11.setColor(blue_green);
+      wait(20, msec);
+    }
+  }
+  else {
+    TouchLED11.setColor(red);
+    Brain.playSound(wrongWaySlow);
+    repeat(12) {
+      TouchLED11.setColor(colorType::none);
+      wait(0.25, seconds);
+      TouchLED11.setColor(red);
+      wait(20, msec);
+    }
+  }
+}
+
+// Used to find the format string for printing numbers with the
+// desired number of decimal places
+const char* printToBrain_numberFormat() {
+  // look at the current precision setting to find the format string
+  switch(Brain_precision){
+    case 0:  return "%.0f"; // 0 decimal places (1)
+    case 1:  return "%.1f"; // 1 decimal place  (0.1)
+    case 2:  return "%.2f"; // 2 decimal places (0.01)
+    case 3:  return "%.3f"; // 3 decimal places (0.001)
+    default: return "%f"; // use the print system default for everthing else
+  }
+}
+
+// "when TouchLED11 pressed" hat block
+void onevent_TouchLED11_pressed_0() {
+  Gyro4.setHeading(0.0, degrees);
+  Gyro4.setRotation(0.0, degrees);
+
+  Intake.spin(forward);
+  //collect first line of greens
+  drive(450, 0, 60, 1);
+  isIntakeOn = true;
+  drive(-50, 0, 60, 1);
+  wait(0.1, seconds);
+  
+  //collect flower
+  turn(-90);
+  drive(100, -90, 40, 1);
+  wait(0.25, seconds);
+  drive(50, -90, 40, 1);
+  wait(0.4, seconds);
+  drive(100, -90, 60, 1);
+  wait(0.1, seconds);
+
+  //collect from middle
+  //turn heading used to be 65
+  turn(68);
+  //distance was 800
+  drive(825, 68, 60, 1);
+  turn(105);
+  drive(600, 105, 40, 1);
+
+  //collect line
+  turn(180);
+  //distance was 400
+  drive(375, 180, 60, 1);
+
+  //collect flower
+  turn(45);
+  //all drive headings were 45
+  drive(125, 45, 40, 1);
+  wait(0.25, seconds);
+  drive(100, 45, 40, 1);
+  wait(0.4, seconds);
+  drive(100, 45, 60, 0);
+  
+  //dump purples
+  turn(-15);
+  LeftMotor.setVelocity(60, percent);
+  RightMotor.setVelocity(80, percent);
+  LeftMotor.spin(reverse);
+  RightMotor.spin(reverse);
+  wait(0.7, seconds);
+  Lift.spin(reverse);
+  //velocity threshold changed from -5 to -25
+  while (LeftMotor.velocity(percent) < -25 && RightMotor.velocity(percent) < -25) {
+    //LeftMotor.spin(reverse);
+    //RightMotor.spin(reverse);
+    wait(20, msec);
+  }
+  Lift.spin(reverse);
+  wait(0.25, seconds);
+  Lift.stop();
+  drive(50, 0, 80, 1);
+  drive(-50, 0, -100, 1);
+  wait(0.25, seconds);
+  Lift.spinToPosition(0, degrees, false);
+  //Lift.stop();
+  //wait(0.5,seconds);
+  //Lift.spinToPosition(0, degrees, false);
+  LeftMotor.stop();
+  RightMotor.stop();
+
+  //collect flowers in the back
+  //distance was 700; 720
+  drive(710, -20, 80, 2);
+  drive(400, -45, 80, 1.5);
+  wait(0.1, seconds);
+
+  drive(100, -90, 80, 1);
+  wait(0.25, seconds);
+  drive(100, -90, 40, 1);
+  wait(0.5, seconds);
+  drive(100, -90, 60, 1);
+  wait(0.1, seconds);
+  
+  drive(300, -90, 60, 1);
+  wait(0.25, seconds);
+  drive(100, -90, 60, 1);
+  wait(0.5, seconds);
+  //velocity was 60
+  drive(200, -90, 40, 1);
+  wait(0.1, seconds);
+
+  //collect from middle
+  //distance was -465 velociy was -80
+  drive(-475, -90, -60, 1);
+  drive(400, -180, 60, 1);
+  drive(300, -180, 80, 1);
+  //wait(0.2, seconds);
+  drive(250, -180, 40, 1, 2);
+  //distance was -650, heading was -175
+  drive(-600, -180, -60, 1);
+
+  //dump purples
+  turn(-135);
+  drive(-600, -90, -80, 1);
+  LeftMotor.setVelocity(80, percent);
+  RightMotor.setVelocity(100, percent);
+  LeftMotor.spin(reverse);
+  RightMotor.spin(reverse);
+  wait(0.5, seconds);
+
+  Lift.spin(reverse);
+  //velocity threshold changed from -5 to -25
+  while (LeftMotor.velocity(percent) < -25 && RightMotor.velocity(percent) < -25) {
+    LeftMotor.spin(reverse);
+    RightMotor.spin(reverse);
+  }
+  //Lift.spin(reverse);
+  wait(0.25, seconds);
+  Lift.stop();
+  drive(50, -90, 80, 1);
+  drive(-50, -90, -100, 1);
+  wait(0.25, seconds);
+  Lift.spinToPosition(0, degrees, false);
+  LeftMotor.stop();
+  RightMotor.stop();
+
+  //dump greens
+  drive(400, -110, 60, 1);
+  drive(400, -180, 60, 1);
+  turn(-315);
+  //kP was 0.75
+  drive(-1000, -280, -80, 1);
+  //heading was -270
+  drive(-400, -265, -60, 1, 1);
+  drive(20, -270, 60, 1);
+  turn(-340);
+  LeftMotor.setVelocity(100, percent);
+  RightMotor.setVelocity(80, percent);
+  LeftMotor.spin(reverse);
+  RightMotor.spin(reverse);
+  wait(0.5, seconds);
+  while (LeftMotor.velocity(percent) < -5 && RightMotor.velocity(percent) < -5) {
+    LeftMotor.spin(reverse);
+    RightMotor.spin(reverse);
+  }
+
+  LeftMotor.stop();
+  RightMotor.stop();
+
+  LeftMotor.setVelocity(100, percent);
+  RightMotor.setVelocity(100, percent);
+
+  LeftMotor.spin(forward);
+  RightMotor.spin(forward);
+
+  wait(0.5, seconds);
+
+  LeftMotor.stop();
+  RightMotor.stop();
+
+  //turn(-350);
+
+  LeftMotor.setVelocity(100, percent);
+  RightMotor.setVelocity(60, percent);
+  LeftMotor.spin(reverse);
+  RightMotor.spin(reverse);
+  while (LeftMotor.velocity(percent) < -5 && RightMotor.velocity(percent) < -5) {
+    LeftMotor.spin(reverse);
+    RightMotor.spin(reverse);
+  }
+  Lift.spinToPosition(540, degrees);
+  wait(0.25, seconds);
+  Lift.spinToPosition(840, degrees);
+  wait(0.75, seconds);
+  Lift.spinToPosition(0, degrees, false);
+
+  isIntakeOn = false;
+
+  //park
+  RightMotor.setVelocity(100, percent);
+  LeftMotor.stop();
+  RightMotor.stop();
+  LeftMotor.spin(forward);
+  RightMotor.spin(forward);
+  wait(3,seconds);
+  Intake.stop();
+  wait(2, seconds);
+  LeftMotor.stop();
+  RightMotor.stop();
+}
+
+
+int main() {
+  // register event handlers
+  LEDblink(onevent_LEDblink_0);
+  TouchLED11.pressed(onevent_TouchLED11_pressed_0);
+
+  wait(15, msec);
+  whenStarted1();
+}
