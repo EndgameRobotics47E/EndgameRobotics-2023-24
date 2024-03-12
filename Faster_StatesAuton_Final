@@ -188,7 +188,7 @@ int whenStarted1() {
         wait(0.5, seconds);
 
         if(Intake.velocity(percent) < 5) {
-          Brain.Screen.print("jammed");
+          Brain.Screen.print("jamed");
           Brain.Screen.newLine();
           Intake.setVelocity(50, percent);
           Intake.spin(reverse);
